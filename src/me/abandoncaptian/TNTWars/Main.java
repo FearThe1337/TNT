@@ -11,6 +11,7 @@ import java.util.UUID;
 //import java.util.Map.Entry;
 import java.util.logging.Logger;
 
+import me.abandoncaptian.TNTWars.player.data.PlayerExperience;
 import org.apache.commons.lang.ArrayUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -88,8 +89,7 @@ public class Main extends JavaPlugin implements Listener{
 	HashMap<UUID, PlayerInventory> invSaves = new HashMap<UUID, PlayerInventory>();
 	HashMap<String, String> selectedKit = new HashMap<String, String>();
 	Map<String, ItemStack[]> extraInv;
-	Map<String, Integer> savedXPL = new HashMap<String, Integer>();
-	Map<String, Float> savedXP = new HashMap<String, Float>();
+	Map<UUID, PlayerExperience> storedExperience = new HashMap<>();
 
 	TNTPrimed primeTnt;
 	BukkitTask deathCount;
@@ -369,7 +369,7 @@ public class Main extends JavaPlugin implements Listener{
 					starting1 = false;
 					for(String name : inGame){
 						InventorySwitch(Bukkit.getPlayer(name));
-						ExpSwitch(name);
+						ExpSwitch(Bukkit.getPlayer(name).getUniqueId());
 						if(Bukkit.getPlayer(name).getGameMode() != GameMode.SURVIVAL) Bukkit.getPlayer(name).setGameMode(GameMode.SURVIVAL);
 						Bukkit.getPlayer(name).setInvulnerable(false);
 						Bukkit.getPlayer(name).setHealth(20);
@@ -664,42 +664,26 @@ public class Main extends JavaPlugin implements Listener{
 			}
 		}
 	}
-	public void ExpSwitch(String pName) {
-		boolean found = false;
-		if(savedXPL.size() > 0){
-			for(String name : savedXPL.keySet()){
-				if(name.equals(pName)){
-					found = true;
-					Player p = Bukkit.getPlayer(name);
-					p.setLevel(savedXPL.get(name));
-					savedXPL.remove(name);
-					break;
-				}
+
+	public void ExpSwitch(UUID playerUUID) {
+		PlayerExperience experience = storedExperience.get(playerUUID);
+		if(experience != null) {
+			// restore experience
+			Player player = Bukkit.getPlayer(playerUUID);
+			if(player != null) {
+				player.setLevel(experience.getLevel());
+				player.setExp(experience.getProgress());
+			}else{
+				System.err.printf("ERROR: Attempted to restore the experience for a player with uuid '%s' yet the player is not online!%n", playerUUID.toString());
 			}
-		}
-		if(savedXP.size() > 0){
-			for(String name : savedXP.keySet()){
-				if(name.equals(pName)){
-					found = true;
-					Player p = Bukkit.getPlayer(name);
-					p.setExp(savedXP.get(name));
-					savedXP.remove(name);
-					break;
-				}
+		} else {
+			// store experience
+			Player player = Bukkit.getPlayer(playerUUID);
+			if(player != null) {
+				storedExperience.put(playerUUID, PlayerExperience.fromPlayer(player));
+			}else{
+				System.err.printf("ERROR: Attempted to store the experience for a player with uuid '%s' yet the player is not online!%n", playerUUID.toString());
 			}
-		}
-		if(!found){
-			Player p = Bukkit.getPlayer(pName);
-			int expL = p.getLevel();
-			Float exp = p.getExp();
-			if(expL > 0){
-				savedXPL.put(pName, expL);
-			}
-			if(exp > 0){
-				savedXP.put(pName, exp);
-			}
-			p.setLevel(0);
-			p.setExp(0);
 		}
 	}
 
@@ -733,15 +717,13 @@ public class Main extends JavaPlugin implements Listener{
 	}
 
 	public boolean hasSwitchedExp(Player p) {
-		if(savedXP.keySet().contains(p.getName()) || savedXPL.keySet().contains(p.getName())){
-			return true;
-		}else return false;
+		return storedExperience.containsKey(p.getUniqueId());
 	}
 
 	@EventHandler
 	public void gameConnect(PlayerJoinEvent e){
 		if(hasSwitchedInv(e.getPlayer()))InventorySwitch(e.getPlayer());
-		if(hasSwitchedExp(e.getPlayer()))ExpSwitch(e.getPlayer().getName());
+		if(hasSwitchedExp(e.getPlayer())) ExpSwitch(e.getPlayer().getUniqueId());
 	}
 	@EventHandler
 	public void gameDeath(PlayerDeathEvent e){
@@ -762,7 +744,7 @@ public class Main extends JavaPlugin implements Listener{
 					public void run() {
 						p.getInventory().clear();
 						InventorySwitch(p);
-						ExpSwitch(p.getName());
+						ExpSwitch(p.getUniqueId());
 					}
 				}, (20*3));
 				Bukkit.getScheduler().runTaskLater(this, new Runnable(){
@@ -780,7 +762,10 @@ public class Main extends JavaPlugin implements Listener{
 					Bukkit.getPlayer(inGame.get(0)).setFoodLevel(20);
 					Bukkit.getPlayer(inGame.get(0)).getInventory().clear();
 					InventorySwitch(Bukkit.getPlayer(inGame.get(0)));
-					ExpSwitch(inGame.get(0));
+
+					Player player = Bukkit.getPlayer(inGame.get(0));
+					ExpSwitch(player.getUniqueId());
+
 					Bukkit.getPlayer(inGame.get(0)).setHealthScale(20);
 					Bukkit.getPlayer(inGame.get(0)).teleport(this.spawnpoint);
 					inGame.clear();
